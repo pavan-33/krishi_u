@@ -61,4 +61,7 @@ def validate_token_from_header(authorization: str = Header(None)):
     token_prefix = "Bearer "
     if not authorization.startswith(token_prefix):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token prefix")
-    return verify_token(authorization[len(token_prefix):])
+    payload = verify_token(authorization[len(token_prefix):])
+    if "id" not in payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing user ID")
+    return payload
