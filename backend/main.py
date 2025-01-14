@@ -10,8 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uuid
-# Mount the 'media' directory to serve static files (images)
-
+# Mount the 'media' directory to serve static files (image)
+# FastAPI app
 app = FastAPI()
 
 # Path where the media files will be stored
@@ -203,116 +203,173 @@ def get_all_landlords(user: dict = Depends(validate_token_from_header),db: Sessi
     else:
         raise HTTPException(status_code=400, detail="You Dont have permission to access.")
 
-# Route for farmer details registration
+
+
 @app.post("/farmer/register")
-def register_farmer(farmer_details: FarmerDetailsRequest,user: dict = Depends(validate_token_from_header),db: Session = Depends(get_db)
+def register_farmer(
+    farmer_details: FarmerDetailsRequest,
+    db: Session = Depends(get_db)
 ):
-    # Check if the user has the correct role
-    if user['role'] not in ['admin', 'farmer']:
-        raise HTTPException(status_code=403, detail="You do not have permission to access this resource.")
+    """
+    Register farmer details for an existing user.
 
-    # Determine the user_id based on the role
-    user_id = None
-    if user['role'] == 'admin' and farmer_details.user_id:
-        user_obj = db.query(User).filter(User.id == farmer_details.user_id).first()
-        if not user_obj:
-            raise HTTPException(status_code=404, detail="User ID provided does not exist.")
-        user_id = user_obj.id
-    elif user['role'] == 'farmer':
-        user_obj = db.query(User).filter(User.email == user['email']).first()
-        if not user_obj:
-            raise HTTPException(status_code=404, detail="Farmer not found.")
-        user_id = user_obj.id
-    else:
-        raise HTTPException(status_code=400, detail="Please provide a valid user ID.")
+    Args:
+        farmer_details (FarmerDetailsRequest): Farmer details payload.
+        db (Session): Database session.
 
-    # Check if the farmer already exists
-    existing_farmer = db.query(FarmerDetails).filter(FarmerDetails.user_id == user_id).first()
-    if existing_farmer:
-        raise HTTPException(status_code=400, detail="Farmer already exists.")
-
-    # Validate the provided details
-    if validate_farmer_details(farmer_details.land_handling_capacity):
-        new_farmer = FarmerDetails(
-            user_id=user_id,
-            phone_number=farmer_details.phone_number,
-            land_handling_capacity=farmer_details.land_handling_capacity,
-            preferred_locations=farmer_details.preferred_locations,
+    Returns:
+        dict: Registered farmer details.
+    """
+    # Ensure user_id is provided
+    if not farmer_details.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User ID is required for farmer registration."
         )
-        db.add(new_farmer)
-        db.commit()
-        db.refresh(new_farmer)
-        return {
-            "message": "Farmer registered successfully",
-            "farmer": {
-                "user_id": new_farmer.user_id,
-                "phone_number": new_farmer.phone_number,
-                "land_handling_capacity": new_farmer.land_handling_capacity,
-                "preferred_locations": new_farmer.preferred_locations,
-            }
+
+    # Check if the user exists and is a farmer
+    user = db.query(User).filter(User.id == farmer_details.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found. Please register the user first."
+        )
+
+    if user.role != "farmer":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not registered as a farmer."
+        )
+
+    # Check if farmer details already exist for this user
+    existing_farmer = db.query(FarmerDetails).filter(FarmerDetails.user_id == user.id).first()
+    if existing_farmer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Farmer details already exist for this user."
+        )
+
+    # Validate farmer-specific details
+    try:
+        validate_farmer_details(farmer_details.land_handling_capacity)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Create farmer details
+    new_farmer = FarmerDetails(
+        user_id=user.id,
+        phone_number=farmer_details.phone_number,
+        land_handling_capacity=farmer_details.land_handling_capacity,
+        preferred_locations=farmer_details.preferred_locations,
+    )
+    db.add(new_farmer)
+    db.commit()
+    db.refresh(new_farmer)
+
+    # Return the farmer details
+    return {
+        "farmer": {
+            "user_id": new_farmer.user_id,
+            "phone_number": new_farmer.phone_number,
+            "land_handling_capacity": new_farmer.land_handling_capacity,
+            "preferred_locations": new_farmer.preferred_locations,
         }
-    else:
-        raise HTTPException(status_code=400, detail="Invalid farmer details.")
-# Route for landlord details registration
+    }
+
+
+
 @app.post("/landlord/register")
 def register_landlord(
     landlord_details: LandlordDetailsRequest,
-    user: dict = Depends(validate_token_from_header),
     db: Session = Depends(get_db)
 ):
-    # Check user role
-    if user['role'] not in ['admin', 'landlord']:
-        raise HTTPException(status_code=403, detail="You do not have permission to access this resource.")
+    """
+    Register landlord details for an existing user.
 
-    # Determine user ID based on role
-    user_id = None
-    if user['role'] == 'admin' and landlord_details.user_id:
-        user_obj = db.query(User).filter(User.id == landlord_details.user_id).first()
-        if not user_obj:
-            raise HTTPException(status_code=404, detail="User ID provided does not exist.")
-        user_id = user_obj.id
-    elif user['role'] == 'landlord':
-        user_obj = db.query(User).filter(User.email == user['email']).first()
-        if not user_obj:
-            raise HTTPException(status_code=404, detail="Landlord not found.")
-        user_id = user_obj.id
-    else:
-        raise HTTPException(status_code=400, detail="Please provide a valid user ID.")
+    Args:
+        landlord_details (LandlordDetailsRequest): Landlord details payload.
+        db (Session): Database session.
 
-    # Check if landlord already exists
-    existing_landlord = db.query(LandlordDetails).filter(LandlordDetails.user_id == user_id).first()
-    if existing_landlord:
-        raise HTTPException(status_code=400, detail="Landlord already exists.")
-
-    # Validate landlord details
-    if validate_landlord_details(
-        landlord_details.soil_type,
-        landlord_details.acres,
-        landlord_details.location,
-        landlord_details.images
-    ):
-        new_landlord = LandlordDetails(
-            user_id=user_id,
-            soil_type=landlord_details.soil_type,
-            acres=landlord_details.acres,
-            location=landlord_details.location,
-            images_list=landlord_details.images,
+    Returns:
+        dict: Registered landlord details.
+    """
+    # Ensure user_id is provided
+    if not landlord_details.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User ID is required for landlord registration."
         )
-        db.add(new_landlord)
-        db.commit()
-        db.refresh(new_landlord)
-        return {
-            "message": "Landlord registered successfully",
-            "landlord": {
-                "user_id": new_landlord.user_id,
-                "soil_type": new_landlord.soil_type,
-                "acres": new_landlord.acres,
-                "location": new_landlord.location,
-                "images": new_landlord.images_list,
-            }
+
+    # Check if the user exists and is a landlord
+    user = db.query(User).filter(User.id == landlord_details.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found. Please register the user first."
+        )
+
+    if user.role != "landlord":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not registered as a landlord."
+        )
+
+    # Check if landlord details already exist for this user
+    existing_landlord = db.query(LandlordDetails).filter(LandlordDetails.user_id == user.id).first()
+    if existing_landlord:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Landlord details already exist for this user."
+        )
+
+    # Validate landlord-specific details
+    try:
+        validate_landlord_details(
+            landlord_details.soil_type,
+            landlord_details.acres,
+            landlord_details.location,
+            landlord_details.images
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Validate phone number if provided
+    import re
+
+    if landlord_details.phone_number:
+        phone_regex = re.compile(r"^\+?[0-9]{10,15}$")
+        if not phone_regex.match(landlord_details.phone_number):
+            raise HTTPException(status_code=400, detail="Invalid phone number format.")
+
+
+    # Create landlord details
+    new_landlord = LandlordDetails(
+        user_id=user.id,
+        phone_number=landlord_details.phone_number,
+        soil_type=landlord_details.soil_type,
+        acres=landlord_details.acres,
+        location=landlord_details.location,
+        images_list=landlord_details.images,
+    )
+    db.add(new_landlord)
+    db.commit()
+    db.refresh(new_landlord)
+
+    # Return the landlord details
+    return {
+        "landlord": {
+            "user_id": new_landlord.user_id,
+            "phone_number": new_landlord.phone_number,
+            "soil_type": new_landlord.soil_type,
+            "acres": new_landlord.acres,
+            "location": new_landlord.location,
+            "images": new_landlord.images_list,
         }
-    else:
-        raise HTTPException(status_code=400, detail="Invalid landlord details.")
+    }
+
+
+
+
 
 
 # Route to get the number of spaces (connections) for a user
@@ -527,36 +584,36 @@ async def upload_proof(
 #     return {"message": "Landlord details updated", "landlord_id": landlord.id}
 
 
-# from fastapi import Request
+from fastapi import Request
 
-# @app.post("/upload/images")
-# async def upload_images(request: Request, files: List[UploadFile] = File(...)):
-#     """
-#     Upload multiple images and return their URLs.
-#     The images are saved in the 'media' directory and accessible via URLs.
-#     """
-#     print(f"Received files: {files}")  # Debugging input
-#     image_urls = []
+@app.post("/upload/images")
+async def upload_images(request: Request, files: List[UploadFile] = File(...)):
+    """
+    Upload multiple images and return their URLs.
+    The images are saved in the 'media' directory and accessible via URLs.
+    """
+    print(f"Received files: {files}")  # Debugging input
+    image_urls = []
 
-#     for file in files:
-#         try:
-#             # Generate a unique UUID for the file
-#             unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
+    for file in files:
+        try:
+            # Generate a unique UUID for the file
+            unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
             
-#             # Save the uploaded image to the 'media' directory with a unique name
-#             file_location = MEDIA_DIR / unique_filename
-#             with open(file_location, "wb") as f:
-#                 f.write(await file.read())
+            # Save the uploaded image to the 'media' directory with a unique name
+            file_location = MEDIA_DIR / unique_filename
+            with open(file_location, "wb") as f:
+                f.write(await file.read())
 
-#             # Construct the URL for accessing the image
-#             base_url = f"{request.base_url.scheme}://{request.base_url.netloc}"
-#             image_url = f"{base_url}/media/{unique_filename}"
-#             image_urls.append(image_url)
+            # Construct the URL for accessing the image
+            base_url = f"{request.base_url.scheme}://{request.base_url.netloc}"
+            image_url = f"{base_url}/media/{unique_filename}"
+            image_urls.append(image_url)
         
-#         except Exception as e:
-#             raise HTTPException(status_code=500, detail=f"Failed to upload {file.filename}: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to upload {file.filename}: {str(e)}")
 
-#     return JSONResponse(content={"image_urls": image_urls})
+    return JSONResponse(content={"image_urls": image_urls})
 
 
 

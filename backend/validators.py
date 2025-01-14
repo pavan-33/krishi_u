@@ -89,6 +89,10 @@ from typing import List, Optional
 
 class LandlordDetailsRequest(BaseModel):
     user_id: Optional[int] = None
+    phone_number: Optional[str] = Field(
+    None, pattern=r"^\+?\d{10,15}$", description="Phone number in international format (optional)."
+    )
+
     soil_type: str = Field(..., min_length=3, description="Type of land (e.g., agricultural, residential).")
     acres: int = Field(..., gt=0, description="Size of the land in acres (must be greater than 0).")
     location: str = Field(..., min_length=3, description="Location of the land.")
